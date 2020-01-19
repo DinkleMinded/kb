@@ -1,0 +1,98 @@
+Using XCA
+	- For repeatability and reducing the risk of typos, fill out a template before creating any cert.  Saves a lot of typing if need to recreate it.
+	  Make the template very cert-specific, but saves a lot of time on each iteration.
+	- Ok to "create certificate" for all 3 (root, intermediate, server).  No need CSR+signature if we don't need them.
+	- note XCA tags its name under Netscape properties; remove.
+	- Choosing signature algorithm: Caution not to be overly optimistic!
+		List captured from Client Hello / Google Chrome Jan 2020 using Wirechark:
+			(Note only 9 choices):
+			Extension: signature_algorithms
+			    Type: signature_algorithms (0x000d)
+			    Length: 20
+			    Signature Hash Algorithms Length: 18
+			    Signature Hash Algorithms (9 algorithms)
+			        Signature Hash Algorithm: 0x0403
+			            Signature Hash Algorithm Hash: SHA256 (4)
+			            Signature Hash Algorithm Signature: ECDSA (3)
+			        Signature Hash Algorithm: 0x0804
+			            Signature Hash Algorithm Hash: Unknown (8)
+			            Signature Hash Algorithm Signature: Unknown (4)
+			        Signature Hash Algorithm: 0x0401
+			            Signature Hash Algorithm Hash: SHA256 (4)
+			            Signature Hash Algorithm Signature: RSA (1)
+			        Signature Hash Algorithm: 0x0503
+			            Signature Hash Algorithm Hash: SHA384 (5)
+			            Signature Hash Algorithm Signature: ECDSA (3)
+			        Signature Hash Algorithm: 0x0805
+			            Signature Hash Algorithm Hash: Unknown (8)
+			            Signature Hash Algorithm Signature: Unknown (5)
+			        Signature Hash Algorithm: 0x0501
+			            Signature Hash Algorithm Hash: SHA384 (5)
+			            Signature Hash Algorithm Signature: RSA (1)
+			        Signature Hash Algorithm: 0x0806
+			            Signature Hash Algorithm Hash: Unknown (8)
+			            Signature Hash Algorithm Signature: Unknown (6)
+			        Signature Hash Algorithm: 0x0601
+			            Signature Hash Algorithm Hash: SHA512 (6)
+			            Signature Hash Algorithm Signature: RSA (1)
+			        Signature Hash Algorithm: 0x0201
+			            Signature Hash Algorithm Hash: SHA1 (2)
+			            Signature Hash Algorithm Signature: RSA (1)
+		***** PAINFUL to debug: web server returns NO CERT if the signature we choose is not in the small list proposed by the browser.
+			-> Settled on RSA + SHA256.
+				Note: ECDSA (521 bits) + SHA384 did not seem properly supported, did not search for a supported EC curve.
+
+root CA:
+	- most important "Key Usage" flags:
+		- basic: "CA", mark as critical.
+		- extensions: Digital signature, key agreement, cert sign.  Critical.
+
+Intermediate certs
+	- most important "Key Usage" flags:
+		- basic: "CA", mark as critical.
+		- extensions: Digital signature, key agreement, cert sign.  Critical.
+
+"End Entity" (TLS Web Server) certificate:
+	- no "critical" extension
+	- make sure to fill out both "commonName"(CN) and "alternatesubjectname", as chrome browser 2019 now uses the latter.
+		Store the DNS entry of the server.
+		Do not mark as critical.
+	- most important "Key Usage" flags:
+		- basic: "End Entity" (not CA).  do not mark as critical.
+		- extensions: digital signature, key encypherment (not critical)
+		- extended: TLS web server (not critical)
+		- No "Netscape Web Server" cert type needed.
+
+OpenSSL was useful to see what the server was returning:
+	openssl s_client -connect pcoip.mydomain.local:443
+	-> can see immediately if the server disagrees with the browser's "Signature Hash Algorithms" list.
+		(i.e. server replies with 7 bytes, does not attempt further handshake)
+
+On the Horizon broker, in the MMC certificate list:
+	- Import the whole chain into "Local Machine / Personal" store;
+	- change "friendly name" of the server certificate to "vdm".  This is what causes the VMWare server to use that certificate.
+	- Move the root cert into the "Local Machine / Trusted CA" store
+	- Move the intermediate cert into the "Local Machine / Trusted Intermediate CA" store
+		***** PAINFUL to debug: Intermediate key must be placed in its own folder on Microsoft Windows trust store:
+			From the VMWare KB:
+			If intermediate certificates are issued to a Connection Server, security server, or View Composer host,
+			import the most recent update to the intermediate certificates into the 
+				Certificates (Local Computer) > Intermediate Certification Authorities > Certificates
+			folder in the Windows certificate store.
+
+Testing:
+	- Chrome is a pain, cached the cert for the longest time.
+	  Open Developer Tools to see the cert from the browser (everywhere else is just the "error message for dummies").
+	- Firefox needs a flag set, to trust the Windows trust store.
+		"If the signing certificate is in the Windows certificate store (for example, IE and Chrome trust it), you could set Firefox to trust everything that Internet Explorer trusts by having it check for authority certificates in the Windows certificate store.
+			This is easier, but the downside is that any successful attack on the Windows certificate store (bogus authority certificates inserted there by malware) will affect Firefox, too.
+		(A) In a new tab, type or paste about:config in the address bar and press Enter/Return. Click the button promising to be careful.
+		(B) In the search box above the list, type or paste root and pause while the list is filtered
+		(C) Double-click the security.enterprise_roots.enabled preference to switch the value from false to true"
+
+Administrative Web Interface, on Dell Wyse PCoIP device
+	- Access / "Administrative Web Interface" was set to disabled by default
+		-> Enable and reset.
+	- Can upload a certificate here for the Dell Zero client
+		https://wyse.mydomain.local/upload/certificate_upload.html
+		"Certificate must be a .pem file"  (note: *.crt == pem)
