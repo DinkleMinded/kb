@@ -129,3 +129,22 @@ Additional info about Subsonic:
 
 # Config file where subsonic-booter-jar-with-dependencies.jar is identified:
 #sudo vi /usr/share/subsonic/subsonic.sh
+
+---------------------------------
+
+Uploading certificates to ownCloud
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ssh Administrator@owncloud
+
+# upload certs to /etc/myssl/
+
+# Configure Apache2 to use them
+sudo ucr set apache2/ssl/certificate="/etc/myssl/cert.pem"
+sudo ucr set apache2/ssl/key="/etc/myssl/private.key"
+
+# Force https
+sudo ucr set apache2/force_https=yes
+
+# Restart
+sudo service apache2 restart
